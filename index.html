@@ -2,231 +2,158 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Mini Smash Ultimate+</title>
+<title>Smash Ultimate+</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center}
-canvas{background:#222;display:block;margin:auto}
-button,select{font-size:16px;margin:5px;padding:5px}
-#screen{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center}
-.panel{background:#222;padding:20px;border-radius:10px}
+body{margin:0;background:#111;color:#fff;font-family:sans-serif;overflow:hidden;}
+.screen{display:none;justify-content:center;align-items:center;flex-direction:column;height:100vh;}
+button{padding:10px 16px;margin:6px;font-size:16px;}
+#game{position:relative;width:100vw;height:100vh;background:#222;}
+.player{position:absolute;width:40px;height:40px;border-radius:6px;}
+#p1{background:red;}
+#p2{background:cyan;}
+.stage{position:absolute;bottom:40px;left:5%;width:90%;height:20px;background:#555;}
+.hp{position:absolute;top:5px;font-size:16px;}
+.guard{outline:3px solid cyan;}
+.break{outline:3px solid red;}
 </style>
 </head>
+
 <body>
 
-<div id="screen">
-<div class="panel">
-<h2>ステージ & キャラ選択</h2>
-
-<div>
-1P：
-<select id="p1Char">
-<option value="fighter">FIGHTER</option>
-<option value="speed">SPEED</option>
-<option value="power">POWER</option>
-</select>
+<div id="title" class="screen" style="display:flex">
+<h1>Mini Smash</h1>
+<button onclick="mode='cpu';show('select')">CPU対戦</button>
+<button onclick="mode='pvp';show('select')">2P対戦</button>
 </div>
 
-<div>
-2P：
-<select id="p2Type">
-<option value="cpu">CPU</option>
-<option value="player">PLAYER</option>
-</select>
-<select id="p2Char">
-<option value="fighter">FIGHTER</option>
-<option value="speed">SPEED</option>
-<option value="power">POWER</option>
-</select>
+<div id="select" class="screen">
+<h2>キャラ選択</h2>
+<button onclick="selectChar(1,'speed')">P1 Speed</button>
+<button onclick="selectChar(1,'power')">P1 Power</button>
+<button onclick="selectChar(1,'balance')">P1 Balance</button>
+
+<div id="cpuSelect">
+<h3>CPUレベル</h3>
+<button onclick="cpuLevel=1">Easy</button>
+<button onclick="cpuLevel=2">Normal</button>
+<button onclick="cpuLevel=3">Hard</button>
+<button onclick="cpuLevel=4">Insane</button>
 </div>
 
-<div>
-CPU Lv：
-<select id="cpuLv">
-<option>1</option><option>2</option><option selected>3</option>
-<option>4</option><option>5</option>
-</select>
+<button onclick="startGame()">START</button>
 </div>
 
-<div>
-Stage：
-<select id="stage">
-<option value="final">FINAL</option>
-<option value="float">FLOAT</option>
-<option value="pit">PIT</option>
-</select>
+<div id="game">
+<div class="stage"></div>
+<div id="p1" class="player"></div>
+<div id="p2" class="player"></div>
+<div id="hp1" class="hp"></div>
+<div id="hp2" class="hp" style="right:10px"></div>
 </div>
-
-<button onclick="start()">START</button>
-</div>
-</div>
-
-<canvas id="game" width="900" height="450"></canvas>
 
 <script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-
-let stage="final";
-let cpuLv=3;
-
-const gravity=0.6;
-const MAX_STOCK=3;
+let mode="cpu";
+let cpuLevel=1;
 
 const chars={
- fighter:{speed:4,power:1},
- speed:{speed:6,power:0.7},
- power:{speed:3,power:1.6}
+ speed:{speed:6,power:0.8},
+ power:{speed:3,power:1.6},
+ balance:{speed:4.5,power:1}
 };
 
-function makePlayer(x,char){
- return {
-  x,y:330,w:40,h:40,
-  vx:0,vy:0,
-  dmg:0,stock:MAX_STOCK,
-  on:false,stun:0,
-  char:chars[char],
-  facing:1,
-  specialCD:0,
-  isCPU:false
- };
+let p1={x:200,y:300,vx:0,vy:0,percent:0,stock:3,guard:100,air:false,char:null};
+let p2={x:500,y:300,vx:0,vy:0,percent:0,stock:3,guard:100,air:false,char:null};
+
+function show(id){
+ document.querySelectorAll('.screen').forEach(s=>s.style.display='none');
+ document.getElementById(id).style.display='flex';
 }
 
-let p1,p2;
+function selectChar(p,c){
+ (p===1?p1:p2).char=chars[c];
+}
 
-const keys={};
-document.onkeydown=e=>keys[e.key]=true;
-document.onkeyup=e=>keys[e.key]=false;
-
-function start(){
- stage=document.getElementById("stage").value;
- cpuLv=+document.getElementById("cpuLv").value;
- const c1=document.getElementById("p1Char").value;
- const c2=document.getElementById("p2Char").value;
- const type=document.getElementById("p2Type").value;
-
- p1=makePlayer(200,c1);
- p2=makePlayer(650,c2);
- p2.isCPU = type==="cpu";
-
- document.getElementById("screen").style.display="none";
+function startGame(){
+ if(!p1.char) p1.char=chars.balance;
+ if(!p2.char) p2.char=chars.balance;
+ show("game");
  loop();
 }
 
-function physics(p){
- if(p.stun>0){p.stun--;return;}
- p.vy+=gravity;
- p.x+=p.vx;
- p.y+=p.vy;
-
- let ground=330;
- if(stage==="float") ground=300;
- if(stage==="pit") ground=380;
-
- if(p.y>ground){p.y=ground;p.vy=0;p.on=true;}
-}
-
-function hit(a,b){
- return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;
-}
-
-// ===== 必殺技 =====
-function special(p,enemy,dir){
- if(p.specialCD>0) return;
- p.specialCD=60;
-
- if(p.char===chars.fighter){
-  if(dir==="side"){p.vx=8*p.facing;}
-  if(dir==="up"){p.vy=-14;}
-  if(dir==="down"){p.stun=20;}
- }
-
- if(p.char===chars.speed){
-  if(dir==="side"){p.vx=12*p.facing;}
-  if(dir==="up"){p.vy=-18;}
-  if(dir==="down"){p.vx*=0;p.vy=0;}
- }
-
- if(p.char===chars.power){
-  if(dir==="side"){p.vx=6*p.facing;enemy.vy=-8;}
-  if(dir==="up"){p.vy=-12;}
-  if(dir==="down"){p.stun=10;}
- }
-}
-
+// ================= 攻撃処理 =================
 function attack(att,def,power){
- def.dmg+=power*att.char.power;
- def.vx=(def.x>att.x?1:-1)*(4+power);
- def.vy=-6;
-}
-
-function cpuAI(cpu,enemy){
- const d=enemy.x-cpu.x;
- if(Math.abs(d)>40) cpu.vx=Math.sign(d)*cpu.char.speed;
- if(Math.random()<0.01*cpuLv) attack(cpu,enemy,4);
- if(Math.random()<0.01*cpuLv) special(cpu,enemy,"side");
- if(Math.random()<0.005*cpuLv) cpu.vy=-12;
-}
-
-function playerControl(p,isP1){
- const L=isP1?keys.a:keys.ArrowLeft;
- const R=isP1?keys.d:keys.ArrowRight;
- const U=isP1?keys.w:keys.ArrowUp;
- const atk=isP1?keys.f:keys["/"];
- const smash=isP1?keys.g:keys["."];
- const spec=isP1?keys.r:keys.b;
-
- if(L){p.vx=-p.char.speed;p.facing=-1}
- else if(R){p.vx=p.char.speed;p.facing=1}
- else p.vx*=0.8;
-
- if(U&&p.on){p.vy=-12;p.on=false;}
-
- if(atk) attack(p,isP1?p2:p1,4);
-
- if(spec){
-  if(U) special(p,isP1?p2:p1,"up");
-  else if(L||R) special(p,isP1?p2:p1,"side");
-  else special(p,isP1?p2:p1,"down");
+ if(Math.abs(att.x-def.x)<60){
+  if(def.guard>0){
+    def.guard-=15;
+  }else{
+    def.percent+=power;
+    def.vy=-8;
+  }
  }
 }
 
-function drawStage(){
- ctx.fillStyle="#555";
- if(stage==="float"){
-  ctx.fillRect(200,330,500,20);
- }else if(stage==="pit"){
-  ctx.fillRect(0,390,900,20);
+// ================= CPU AI =================
+function cpuAI(){
+ let a=p2,b=p1;
+ let d=b.x-a.x;
+
+ // 移動
+ if(Math.abs(d)>60){
+   a.vx=Math.sign(d)*a.char.speed;
  }else{
-  ctx.fillRect(0,370,900,80);
+   a.vx=0;
+ }
+
+ // ジャンプ回避
+ if(cpuLevel>=3 && Math.random()<0.02 && !a.air){
+   a.vy=-10;
+ }
+
+ // 攻撃頻度
+ let atkRate=[0.005,0.015,0.03,0.06][cpuLevel-1];
+ if(Math.random()<atkRate){
+   attack(a,b,10*a.char.power);
+ }
+
+ // ガード
+ if(cpuLevel>=2 && Math.random()<0.02){
+   a.guard=50;
  }
 }
 
+// ================= ループ =================
 function loop(){
- ctx.clearRect(0,0,900,450);
+ if(mode==="cpu") cpuAI();
 
- if(p2.isCPU) cpuAI(p2,p1);
- else playerControl(p2,false);
- playerControl(p1,true);
+ [p1,p2].forEach(p=>{
+  p.vy+=0.6;
+  p.x+=p.vx;
+  p.y+=p.vy;
 
- physics(p1); physics(p2);
+  if(p.y>300){p.y=300;p.vy=0;p.air=false;}
+ });
 
- if(p1.y>500){p1.stock--;p1.y=0;p1.dmg=0}
- if(p2.y>500){p2.stock--;p2.y=0;p2.dmg=0}
+ // 落下
+ [p1,p2].forEach(p=>{
+  if(p.y>600||p.x<-200||p.x>innerWidth+200){
+    p.stock--;
+    p.x=innerWidth/2;
+    p.y=200;
+    p.percent=0;
+  }
+ });
 
- drawStage();
+ if(p1.stock<=0){alert("YOU LOSE");location.reload();}
+ if(p2.stock<=0){alert("YOU WIN");location.reload();}
 
- ctx.fillStyle="cyan"; ctx.fillRect(p1.x,p1.y,p1.w,p1.h);
- ctx.fillStyle="red"; ctx.fillRect(p2.x,p2.y,p2.w,p2.h);
+ document.getElementById("p1").style.left=p1.x+"px";
+ document.getElementById("p1").style.top=p1.y+"px";
+ document.getElementById("p2").style.left=p2.x+"px";
+ document.getElementById("p2").style.top=p2.y+"px";
 
- ctx.fillStyle="#fff";
- ctx.fillText(`P1 ${p1.dmg}% STOCK:${p1.stock}`,20,20);
- ctx.fillText(`P2 ${p2.dmg}% STOCK:${p2.stock}`,680,20);
-
- if(p1.stock<=0||p2.stock<=0){
-  alert(p1.stock<=0?"P2 WIN":"P1 WIN");
-  location.reload();
- }
+ document.getElementById("hp1").innerText=`P1 ❤${p1.stock} ${Math.floor(p1.percent)}%`;
+ document.getElementById("hp2").innerText=`P2 ❤${p2.stock} ${Math.floor(p2.percent)}%`;
 
  requestAnimationFrame(loop);
 }
